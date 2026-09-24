@@ -2,15 +2,18 @@
 
 Linux companion for **CMF Buds Neo**. It brings the listening controls from the Android and iOS Nothing X app to your desktop, so you can pair the buds to this computer and change how they sound and how the buttons behave without the phone. It is not the official Nothing X app.
 
-Those listening controls are noise cancellation (off, high, medium, low, adaptive, and transparency), spatial audio, bass enhance, low latency, and the press gestures on each bud. Ear Link also shows battery, firmware version, and serial number, and it can ring the buds or run the ear-tip fit test.
+Available listening controls are noise cancellation (off, high, medium, low, adaptive, and transparency), spatial audio, bass enhance, low latency, and the press gestures on each bud. Ear Link also shows battery, firmware version, and serial number, and it can ring the buds or run the ear-tip fit test.
 
 Buds Neo do not have a pairing button. Opening the case is what makes them visible.
 
 ## Install
 
-The package is `earlink_1.0.0_all.deb` in this directory.
+Download from releases.
 
 ```sh
+#install deps
+sudo apt install python3 python3-gi python3-dbus gir1.2-gtk-4.0 gir1.2-adw-1 bluez pipewire-pulse pulseaudio-utils
+#install package
 sudo dpkg -i earlink_1.0.0_all.deb
 ```
 
