@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Ear Link
+GenericName=Earbud controls
+Comment=Pair and control Nothing and CMF earbuds
+Exec=earlink
+Icon=earlink
+Terminal=false
+Type=Application
+Categories=Audio;Settings;HardwareSettings;
+Keywords=Nothing;CMF;earbuds;bluetooth;ANC;equalizer;
+StartupNotify=true
