@@ -1,6 +1,9 @@
 import unittest
+from unittest.mock import Mock
 
 from earlink.catalog import looks_like_earbud, match_model
+from earlink import protocol
+from earlink.session import EarSession
 from earlink.protocol import (
     Parser,
     crc16,
@@ -15,6 +18,48 @@ from earlink.protocol import (
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_buds_neo_immersion_boost_capture_and_presets(self):
+        # Vendor-channel readback, with Immersion Boost selected in Nothing X:
+        # command 0x4050, payload 06. Pop -> Immersion Boost returned 03 -> 06.
+        self.assertEqual(protocol.parse_eq(b"\x06", listening=True), 6)
+        self.assertEqual(dict(protocol.NEO_EQ_PRESETS)[6], "Immersion Boost")
+        self.assertEqual(dict(protocol.NEO_EQ_PRESETS)[3], "Pop")
+        self.assertEqual(dict(protocol.NEO_EQ_PRESETS)[5], "Classical")
+        self.assertIsNone(protocol.parse_eq(b"", listening=True))
+        self.assertEqual(protocol.parse_eq(b"\x00\x03", listening=True), 3)
+        self.assertEqual(protocol.parse_eq(b"\x03\x00"), 3)
+
+    def test_eq_write_uses_model_specific_command(self):
+        # Avoid constructing a real Bluetooth socket for protocol checks.
+        ear = EarSession.__new__(EarSession)
+        ear.write = Mock()
+        ear.model = match_model("CMF Buds Neo")
+        ear.set_eq(6)
+        ear.write.assert_called_once_with(0xF01D, b"\x06\x00")
+        with self.assertRaises(ValueError):
+            ear.set_eq(0)
+        with self.assertRaises(ValueError):
+            ear.set_custom_eq(0, 0, 0, "3400")
+        ear.write.reset_mock()
+        ear.model = match_model("Nothing Ear (2)")
+        ear.set_eq(5)
+        ear.write.assert_called_once_with(0xF010, b"\x05\x00")
+
+    def test_neo_snapshot_queries_listening_mode_directly(self):
+        ear = EarSession.__new__(EarSession)
+        def read(opcode, *args, **kwargs):
+            if opcode == protocol.OP_LISTENING:
+                return protocol.Frame(0x4050, 3, b"\x06")
+            return None
+        ear._read = Mock(side_effect=read)
+        neo = ear.snapshot(match_model("CMF Buds Neo"))
+        self.assertEqual(neo.eq, 6)
+        self.assertIn(protocol.OP_LISTENING, [call.args[0] for call in ear._read.call_args_list])
+        self.assertNotIn(protocol.OP_EQ_GET, [call.args[0] for call in ear._read.call_args_list])
+        ear._read.reset_mock()
+        ear.snapshot(match_model("Nothing Ear (2)"))
+        self.assertIn(protocol.OP_EQ_GET, [call.args[0] for call in ear._read.call_args_list])
+
     def test_known_anc_and_latency_frames(self):
         transparency = encode(0xF00F, bytes((0x01, 0x07, 0x00)), operation=0xCB)
         self.assertEqual(transparency.hex(), "5560010ff00300cb010700c5af")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import socket
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ READ_ALIASES = {
         protocol.command(protocol.OP_LISTENING, protocol.DIR_RESPONSE),
     },
     protocol.OP_CUSTOM_EQ: {protocol.command(protocol.OP_CUSTOM_EQ, protocol.DIR_RESPONSE)},
+    protocol.OP_LISTENING: {protocol.command(protocol.OP_LISTENING, protocol.DIR_RESPONSE)},
     protocol.OP_BASS: {protocol.command(protocol.OP_BASS, protocol.DIR_RESPONSE)},
     protocol.OP_PERSONAL_ANC: {protocol.command(protocol.OP_PERSONAL_ANC, protocol.DIR_RESPONSE)},
     protocol.OP_IN_EAR: {protocol.command(protocol.OP_IN_EAR, protocol.DIR_RESPONSE)},
@@ -78,10 +80,19 @@ class EarSession:
     def __init__(self, address: str, channel: int) -> None:
         self.address = address
         self.channel = channel
-        self._socket = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-        self._socket.settimeout(4)
-        self._socket.connect((address, channel))
-        self._socket.settimeout(0.25)
+        self.model: Model | None = None
+        if sys.platform == "win32":
+            from .windows import connect_socket
+            self._socket = connect_socket(address, channel, service=VENDOR_SPP_UUID if channel == 0 else None)
+        else:
+            self._socket = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+            try:
+                self._socket.settimeout(4)
+                self._socket.connect((address, channel))
+                self._socket.settimeout(0.25)
+            except BaseException:
+                self._socket.close()
+                raise
         self._parser = protocol.Parser()
         self._lock = threading.Lock()
         self._operation = 1
@@ -143,6 +154,7 @@ class EarSession:
         )
 
     def snapshot(self, model: Model | None) -> Snapshot:
+        self.model = model
         state = Snapshot()
         # A device-info read wakes a fresh session. Later reads are ignored without it.
         self._read(protocol.OP_SERIAL, timeout=1.8)
@@ -158,9 +170,10 @@ class EarSession:
         anc = self._read(protocol.OP_ANC_GET)
         if anc is not None:
             state.anc = protocol.parse_anc(anc.payload)
-        eq = self._read(protocol.OP_EQ_GET)
+        listening = bool(model and model.listening_eq)
+        eq = self._read(protocol.OP_LISTENING if listening else protocol.OP_EQ_GET)
         if eq is not None and eq.payload:
-            state.eq = eq.payload[0]
+            state.eq = protocol.parse_eq(eq.payload, listening=listening)
         custom = self._read(protocol.OP_CUSTOM_EQ)
         if custom is not None:
             state.custom_eq = protocol.decode_custom_eq(custom.payload)
@@ -202,9 +215,15 @@ class EarSession:
         self.write(protocol.command(protocol.OP_ANC, protocol.DIR_SET), protocol.anc_payload(mode))
 
     def set_eq(self, preset: int) -> None:
-        self.write(protocol.command(protocol.OP_EQ, protocol.DIR_SET), bytes((preset & 0xFF, 0x00)))
+        listening = bool(self.model and self.model.listening_eq)
+        if preset not in dict(protocol.eq_presets(listening)):
+            raise ValueError("This EQ preset is not available for the connected model.")
+        opcode = protocol.OP_LISTENING_SET if listening else protocol.OP_EQ
+        self.write(protocol.command(opcode, protocol.DIR_SET), bytes((preset, 0x00)))
 
     def set_custom_eq(self, bass: float, mid: float, treble: float, profile: str) -> None:
+        if self.model and self.model.listening_eq:
+            raise ValueError("Buds Neo uses built-in listening presets; custom EQ is not supported here.")
         payload = protocol.encode_custom_eq(bass, mid, treble, profile)
         self.write(protocol.command(protocol.OP_CUSTOM_EQ_SET, protocol.DIR_SET), payload)
         self.set_eq(0x05)
@@ -259,6 +278,10 @@ VENDOR_SPP_UUID = "aeac4a03-dff5-498f-843a-34487cf133eb"
 
 
 def spp_channels(address: str) -> list[int]:
+    if sys.platform == "win32":
+        # Resolve the vendor service by UUID first; retain the known channels
+        # for devices/drivers whose SDP lookup does not expose that service.
+        return [0, 6, 15, 1]
     vendor: list[int] = []
     others: list[int] = []
     try:

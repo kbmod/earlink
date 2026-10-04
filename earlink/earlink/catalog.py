@@ -19,6 +19,7 @@ class Model:
     aliases: tuple[str, ...]
     eq_profile: str = "3400"
     ear1_ring: bool = False
+    listening_eq: bool = False
 
 
 # Longer aliases must be matched before shorter ones ("Nothing Ear (2)"
@@ -43,7 +44,7 @@ MODELS: tuple[Model, ...] = (
     Model("B184", "CMF Buds 2 Plus", ("cmf buds 2 plus", "cmf buds2 plus"), "6900"),
     Model("B185", "CMF Buds 2a", ("cmf buds 2a",), "6900"),
     Model("B179", "CMF Buds 2", ("cmf buds 2",), "6900"),
-    Model("B193", "CMF Buds Neo", ("cmf buds neo",)),
+    Model("B193", "CMF Buds Neo", ("cmf buds neo",), listening_eq=True),
     Model("B168", "CMF Buds", ("cmf buds",), "6900"),
     Model("B164", "CMF Neckband Pro", ("cmf neckband pro", "neckband pro"), "6900"),
     Model("B175", "CMF Headphone Pro", ("cmf headphone pro",), "3500"),

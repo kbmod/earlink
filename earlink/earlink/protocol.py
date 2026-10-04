@@ -33,6 +33,7 @@ OP_BATTERY = 0x07
 OP_LED = 0x0D
 OP_ANC = 0x0F
 OP_EQ = 0x10
+OP_LISTENING_SET = 0x1D
 OP_PERSONAL_ANC_SET = 0x11
 OP_FIT = 0x14
 OP_LED_GET = 0x17
@@ -75,6 +76,28 @@ EQ_PRESETS = (
     (0x06, "Advanced"),
 )
 EQ_BY_VALUE = {value: label for value, label in EQ_PRESETS}
+
+# CMF listening modes use their own command and numbering. On Buds Neo,
+# mode 6 is Immersion Boost (captured with it selected in Nothing X).
+NEO_EQ_PRESETS = (
+    (0x06, "Immersion Boost"),
+    (0x03, "Pop"),
+    (0x01, "Rock"),
+    (0x05, "Classical"),
+    (0x02, "Electronic"),
+    (0x04, "Enhance Vocals"),
+)
+
+
+def eq_presets(listening: bool = False):
+    return NEO_EQ_PRESETS if listening else EQ_PRESETS
+
+
+def parse_eq(payload: bytes, *, listening: bool = False) -> int | None:
+    if not payload:
+        return None
+    # Listening-mode responses carry a status/type byte before the preset.
+    return payload[1] if listening and len(payload) > 1 else payload[0]
 
 SPATIAL_MODES = (
     ((0x00, 0x00), "Off"),

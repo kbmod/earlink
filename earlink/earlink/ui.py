@@ -133,7 +133,8 @@ class MainWindow(Adw.ApplicationWindow):
         self.status.set_revealed(True)
         page.append(self.status)
         hint = Gtk.Label(
-            label="Open the case and press Scan. Buds Neo do not have a pairing button. "
+            label="Buds Neo: take both buds out and hold both touch controls for about five seconds "
+            "until pairing starts, then press Scan. "
             "Ear Link pairs them for audio, then opens their control channel.",
             wrap=True,
             xalign=0,
@@ -175,11 +176,8 @@ class MainWindow(Adw.ApplicationWindow):
 
         self.sound_group = Adw.PreferencesGroup(title="Sound")
         self.controls.add(self.sound_group)
-        self.eq_group = Adw.ToggleGroup()
-        for value, label in protocol.EQ_PRESETS:
-            self.eq_group.add(Adw.Toggle(label=label, name=str(value)))
-        self.eq_group.connect("notify::active-name", self._on_eq)
-        self.sound_group.add(self._wrap(self.eq_group))
+        self.eq_group = self._combo("Equalizer preset", [label for _, label in protocol.EQ_PRESETS], self._on_eq)
+        self.sound_group.add(self.eq_group)
         self.bass_scale = self._scale("Bass", self._on_custom_eq)
         self.mid_scale = self._scale("Mid", self._on_custom_eq)
         self.treble_scale = self._scale("Treble", self._on_custom_eq)
@@ -437,7 +435,13 @@ class MainWindow(Adw.ApplicationWindow):
         self.identity_row.set_subtitle(" · ".join(bits))
         self.battery_row.set_subtitle(self._battery_text(snapshot))
         self._select_toggle(self.anc_group, snapshot.anc)
-        self._select_toggle(self.eq_group, snapshot.eq)
+        listening = bool(self._model and self._model.listening_eq)
+        presets = protocol.eq_presets(listening)
+        self.eq_group.set_model(Gtk.StringList.new([label for _, label in presets]))
+        self.eq_group.set_selected(next((i for i, (value, _) in enumerate(presets)
+                                         if value == snapshot.eq), Gtk.INVALID_LIST_POSITION))
+        for row in (self.bass_scale, self.mid_scale, self.treble_scale):
+            row.set_visible(not listening)
         if snapshot.custom_eq:
             bass, mid, treble = snapshot.custom_eq
             self.bass_scale.set_value(round(bass))
@@ -557,11 +561,12 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_eq(self, group, _param) -> None:
         if self._updating:
             return
-        name = group.get_active_name()
-        if not name:
+        presets = protocol.eq_presets(bool(self._model and self._model.listening_eq))
+        index = group.get_selected()
+        if index >= len(presets):
             return
-        preset = int(name)
-        if preset == 0x05:
+        preset = presets[index][0]
+        if preset == 0x05 and not (self._model and self._model.listening_eq):
             self._on_custom_eq()
             return
         self._session_call(lambda session: session.set_eq(preset))
@@ -688,7 +693,7 @@ class MainWindow(Adw.ApplicationWindow):
                 "Finds Nothing and CMF earbuds, pairs them for audio, and controls noise cancellation, "
                 "the equalizer, gestures, battery, low latency, in-ear detection, find-my-earbuds, "
                 "the fit test, bass enhance, spatial audio, personalized ANC, and Super Mic. "
-                "Firmware flashing, Audiodo, Dirac, Magic Button, and transcription stay in the official app "
+                "Firmware flashing, Audiodo, Magic Button, and transcription stay in the official app "
                 "because they need Nothing's online services. Dual connection still works: pair this "
                 "computer here, and pair the phone from the phone."
             ),
